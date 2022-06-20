@@ -1,0 +1,8 @@
+{
+    "imports":
+    {
+        "esm/": "https://esm.sh/",
+        "std/": "https://deno.land/std@0.144.0/",
+        "x/": "https://deno.land/x/"
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "tasks":
+    {
+        "go": "deno run -A --unstable --watch Server.tsx"
+    },
+    "importMap": "./imports.json",
+    "compilerOptions":
+    {
+        "lib":
+        [
+            "deno.window",
+            "dom"
+        ]
+    }
+}
