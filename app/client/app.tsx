@@ -1,4 +1,4 @@
-import React from "esm/react";
+import React from "react";
 
 export default ():JSX.Element =>
 {

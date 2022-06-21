@@ -1,6 +1,9 @@
 {
     "imports":
     {
+        "react": "https://esm.sh/react@18",
+        "react-dom/": "https://esm.sh/react-dom@18/",
+        
         "esm/": "https://esm.sh/",
         "std/": "https://deno.land/std@0.144.0/",
         "x/": "https://deno.land/x/"
