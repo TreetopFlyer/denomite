@@ -1,21 +1,16 @@
 import { serve } from "std/http/server.ts";
 import * as ESBuild from "x/esbuild@v0.14.45/mod.js";
-import * as Env from "std/dotenv/mod.ts";
 
 import SSR from "./ssr.tsx";
 
 type LUT = {[key:string]:string}
-type SettingsCollection = {
-    importMap:string,
-    env:LUT
-};
-
-type Processor = (inRequest:Request, inConfig:SettingsCollection)=>string|null;
+type SettingsCollection = { importMap:string };
+type ProcessorResult = BodyInit | null | undefined
+type Processor = (inFilePath:string, inRequest:Request, inConfig:SettingsCollection)=>ProcessorResult|Promise<ProcessorResult>;
 
 const fileConfig = await Deno.readTextFile("./deno.jsonc");
 const Config:SettingsCollection = JSON.parse(fileConfig);
 Config.importMap = await Deno.readTextFile(Config.importMap);
-Config.env = Env.config();
 
 const MIMELUT:LUT =
 {
@@ -96,61 +91,74 @@ const MIMELUT:LUT =
     ".7z": "application/x-7z-compressed"
 };
 
+const Resp404 = new Response("404", {headers:{"content-type": "text/html; charset=utf-8"}});
 
 const Handlers:{[key:string]:Processor} =
 {
-    Layout(inRequest:Request)
+    async Server(inFS, inRequest, inConfig)
     {
-        return "create a layout";
+        return await `{"le-json":["data", "array"]}`;
+    },
+    async Layout(inFS, inRequest, inConfig)
+    {
+        return await SSR(inRequest, inConfig);
+    },
+    async Client(inFS)
+    {
+        try
+        {
+            const file = await Deno.readTextFile(inFS);
+            const code = await ESBuild.transform(file, {loader:"tsx"});
+            return code.code;
+        }
+        catch(e)
+        {
+            console.log(`Can't find ${inFS} for transpiling.`);
+            return null;
+        } 
+    },
+    async Static(inFS, inRequest, inConfig)
+    {
+        try
+        {
+            const file = await Deno.open(inFS);
+            return file.readable;
+        }
+        catch(e)
+        {
+            console.log(`Static file ${inFS} not found.`);
+            return null;
+        }
     }
 };
 
-serve(async (inRequest:Request)=>
+serve(async (inRequest:Request) =>
 {
-    const path:string = new URL(inRequest.url).pathname;
+    const url = new URL(inRequest.url);
+    const path = url.pathname.substring(1).toLowerCase();
 
-    if(path.startsWith("/client/"))
+    let body = null;
+
+    if(path.startsWith("client/"))
     {
-        let code;
-        try
-        {
-            code = await Deno.readTextFile(path.substring(1));
-            code = await ESBuild.transform(code, {loader:"tsx"});
-            code = code.code;
-        }
-        catch(e)
-        {
-            console.log(`Can't find ${path} for transpiling.`);
-            code = "";
-        }
-
-        return new Response(code, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} });
+        body = await Handlers.Client(path, inRequest, Config);
+        return body ? new Response(body, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} }) : Resp404;
     }
-
-    if(path.startsWith("/static/"))
+    if(path.startsWith("static/"))
     {
-        let file;
-        try
-        {
-            file = await Deno.open(path.substring(1));
-            file = file.readable;
-        }
-        catch(e)
-        {
-            file = "";
-        }
-
-        const ext = path.substring(path.lastIndexOf("."));
-        return new Response(file, {status:200, headers:{"content-type": MIMELUT[ext]}});
+        const type = MIMELUT[path.substring(path.lastIndexOf("."))];
+        body = await Handlers.Static(path, inRequest, Config);
+        return body ? new Response(body, {status: 200, headers: {"content-type": type}}) : Resp404;
     }
-
-    if(path.startsWith("/server/"))
+    if(path.startsWith("server/"))
     {
-        return new Response(null, { status: 200, headers: {"content-type": "text/html"} });
+        body = await Handlers.Server(path, inRequest, Config);
+        return body ? new Response(body, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} }) : Resp404;
     }
-
-    //const body = Handlers.Layout(inRequest, Config);
-    const stream = await SSR(inRequest, Config);
-    return new Response(stream, { status: 200, headers: {"content-type": "text/html"} });
+    else
+    {
+        body = await Handlers.Layout(path, inRequest, Config);
+        return body ? new Response(body, { status: 200, headers: {"content-type": "text/html"} }) : Resp404;
+    }
 }
 , {port:3333});

@@ -8,6 +8,7 @@ export default (inRequest:Request, inConfig:{importMap:string}) => ReactDOMServe
 
     </head>
     <body>
+        <img src="/static/img.jpg"/>
         <div id="app">
             <App/>
         </div>
