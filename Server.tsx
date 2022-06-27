@@ -5,14 +5,6 @@ import SSR from "./ssr.tsx";
 
 type LUT = {[key:string]:string}
 type SettingsCollection = { importMap:string };
-type ProcessorResult = BodyInit | null | undefined
-type Processor = (inFilePath:string, inRequest:Request, inConfig:SettingsCollection)=>ProcessorResult|Promise<ProcessorResult>;
-type Route =
-{
-    Order:number,
-    Match:(inPath:string, inRequest:Request)=>boolean,
-    Serve:Processor
-};
 
 const fileConfig = await Deno.readTextFile("./deno.jsonc");
 const Config:SettingsCollection = JSON.parse(fileConfig);
@@ -99,142 +91,42 @@ const MIMELUT:LUT =
 
 const Resp404 = new Response("404", {headers:{"content-type": "text/html; charset=utf-8"}});
 
-const Handlers:{[key:string]:Processor} =
-{
-    async Server(inFS, inRequest, inConfig)
-    {
-        return await `{"le-json":["data", "array"]}`;
-    },
-    async Layout(inFS, inRequest, inConfig)
-    {
-        return await SSR(inRequest, inConfig);
-    },
-    async Client(inFS)
-    {
-        try
-        {
-            const file = await Deno.readTextFile(inFS);
-            const code = await ESBuild.transform(file, {loader:"tsx"});
-            return code.code;
-        }
-        catch(e)
-        {
-            console.log(`Can't find ${inFS} for transpiling.`);
-            return null;
-        } 
-    },
-    async Static(inFS, inRequest, inConfig)
-    {
-        try
-        {
-            const file = await Deno.open(inFS);
-            return file.readable;
-        }
-        catch(e)
-        {
-            console.log(`Static file ${inFS} not found.`);
-            return null;
-        }
-    }
-};
-
-type ResponseContext =
-{
-    URL:URL,
-    Path:string,
-    Body:BodyInit | null | undefined,
-    Head:ResponseInit | null | undefined,
-};
-
-const parts:{[key:string]:Route} =
-{
-    Client:
-    {
-        Match: (inContext)=>inContext.URL.pathname.startsWith("client/") ? inContext.URL.pathname : false,
-        Solve: async (inContext)=>
-        {
-            try
-            {
-                const file = await Deno.readTextFile("./"+inContext.Path);
-                const code = await ESBuild.transform(file, {loader:"tsx"});
-                return code.code;
-            }
-            catch(e)
-            {
-                console.log(`Can't find ${inPath} for transpiling.`);
-                return null;
-            } 
-        },
-        Serve: (inContext)=>
-        {
-            return {
-                status: 200,
-                headers:
-                {
-                    "content-type": "application/javascript; charset=utf-8"
-                }
-            };
-        },
-        Order: 1
-    },
-    Static:
-    {
-        Match: (inPath, inRequest)=>inPath.startsWith("static/"),
-        Solve: (inPath, inRequest)=>
-        {
-
-        },
-        Serve: (inBody)=>
-        {
-            const type = MIMELUT[inPath.substring(inPath.lastIndexOf("."))];
-            let body = await Handlers.Static(inPath, inRequest, Config);
-            return body ? new Response(body, {status: 200, headers: {"content-type": type}}) : Resp404;
-        },
-        Order: 2
-    },
-    Server:
-    {
-        Match: (inPath, inRequest)=>inPath.startsWith("server/"),
-        Serve: (inPath, inRequest)=>JSON.stringify({LeTest:true}),
-        Order: 3
-    },
-
-};
-
 serve(async (inRequest:Request) =>
 {
     const url = new URL(inRequest.url);
     const path = url.pathname.substring(1).toLowerCase();
 
-    const Context:ResponseContext = {
-
-        Path:path,
-        Body:null,
-        Head:null
-    }
-
-
-    let body = null;
-
     if(path.startsWith("client/"))
     {
-        body = await Handlers.Client(path, inRequest, Config);
-        return body ? new Response(body, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} }) : Resp404;
+        try
+        {
+            const file = await Deno.readTextFile(path);
+            const code = await ESBuild.transform(file, {loader:"tsx"});
+            return new Response(code.code, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} })
+        }
+        catch(e)
+        {
+            console.log(`Can't find ${path} for transpiling.`);
+            return Resp404;
+        } 
     }
-    if(path.startsWith("static/"))
+    else if(path.startsWith("static/"))
     {
-        const type = MIMELUT[path.substring(path.lastIndexOf("."))];
-        body = await Handlers.Static(path, inRequest, Config);
-        return body ? new Response(body, {status: 200, headers: {"content-type": type}}) : Resp404;
-    }
-    if(path.startsWith("server/"))
-    {
-        body = await Handlers.Server(path, inRequest, Config);
-        return body ? new Response(body, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} }) : Resp404;
+        try
+        {
+            const file = await Deno.open(path);
+            const type = MIMELUT[path.substring(path.lastIndexOf("."))];
+            return new Response(file.readable, {status: 200, headers: {"content-type": type}});
+        }
+        catch(e)
+        {
+            console.log(`Static file ${path} not found.`);
+            return Resp404;
+        }
     }
     else
     {
-        body = await Handlers.Layout(path, inRequest, Config);
+        const body = await SSR(inRequest, Config);
         return body ? new Response(body, { status: 200, headers: {"content-type": "text/html"} }) : Resp404;
     }
 }
