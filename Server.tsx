@@ -7,6 +7,12 @@ type LUT = {[key:string]:string}
 type SettingsCollection = { importMap:string };
 type ProcessorResult = BodyInit | null | undefined
 type Processor = (inFilePath:string, inRequest:Request, inConfig:SettingsCollection)=>ProcessorResult|Promise<ProcessorResult>;
+type Route =
+{
+    Order:number,
+    Match:(inPath:string, inRequest:Request)=>boolean,
+    Serve:Processor
+};
 
 const fileConfig = await Deno.readTextFile("./deno.jsonc");
 const Config:SettingsCollection = JSON.parse(fileConfig);
@@ -132,10 +138,81 @@ const Handlers:{[key:string]:Processor} =
     }
 };
 
+type ResponseContext =
+{
+    URL:URL,
+    Path:string,
+    Body:BodyInit | null | undefined,
+    Head:ResponseInit | null | undefined,
+};
+
+const parts:{[key:string]:Route} =
+{
+    Client:
+    {
+        Match: (inContext)=>inContext.URL.pathname.startsWith("client/") ? inContext.URL.pathname : false,
+        Solve: async (inContext)=>
+        {
+            try
+            {
+                const file = await Deno.readTextFile("./"+inContext.Path);
+                const code = await ESBuild.transform(file, {loader:"tsx"});
+                return code.code;
+            }
+            catch(e)
+            {
+                console.log(`Can't find ${inPath} for transpiling.`);
+                return null;
+            } 
+        },
+        Serve: (inContext)=>
+        {
+            return {
+                status: 200,
+                headers:
+                {
+                    "content-type": "application/javascript; charset=utf-8"
+                }
+            };
+        },
+        Order: 1
+    },
+    Static:
+    {
+        Match: (inPath, inRequest)=>inPath.startsWith("static/"),
+        Solve: (inPath, inRequest)=>
+        {
+
+        },
+        Serve: (inBody)=>
+        {
+            const type = MIMELUT[inPath.substring(inPath.lastIndexOf("."))];
+            let body = await Handlers.Static(inPath, inRequest, Config);
+            return body ? new Response(body, {status: 200, headers: {"content-type": type}}) : Resp404;
+        },
+        Order: 2
+    },
+    Server:
+    {
+        Match: (inPath, inRequest)=>inPath.startsWith("server/"),
+        Serve: (inPath, inRequest)=>JSON.stringify({LeTest:true}),
+        Order: 3
+    },
+
+};
+
 serve(async (inRequest:Request) =>
 {
     const url = new URL(inRequest.url);
     const path = url.pathname.substring(1).toLowerCase();
+
+    const Context:ResponseContext = {
+
+        Path:path,
+        Body:null,
+        Head:null
+    }
+
 
     let body = null;
 
