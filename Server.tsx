@@ -1,16 +1,15 @@
 import { serve } from "std/http/server.ts";
 import * as ESBuild from "x/esbuild@v0.14.45/mod.js";
 
-import SSR from "./ssr.tsx";
-
-type LUT = {[key:string]:string}
-type SettingsCollection = { importMap:string };
+import React from "react";
+import ReactDOMServer from "react-dom/server";
+import App from "./client/app.tsx";
 
 const fileConfig = await Deno.readTextFile("./deno.jsonc");
-const Config:SettingsCollection = JSON.parse(fileConfig);
+const Config:{ importMap:string } = JSON.parse(fileConfig);
 Config.importMap = await Deno.readTextFile(Config.importMap);
 
-const MIMELUT:LUT =
+const MIMELUT:{[key:string]:string} =
 {
     ".aac": "audio/aac",
     ".abw": "application/x-abiword",
@@ -126,7 +125,23 @@ serve(async (inRequest:Request) =>
     }
     else
     {
-        const body = await SSR(inRequest, Config);
+
+        const body = await ReactDOMServer.renderToReadableStream(
+        <html>
+            <body>
+                <div id="app">
+                    <App route={url.pathname}/>
+                </div>
+                <script type="importmap" dangerouslySetInnerHTML={{__html:Config.importMap}} ></script>
+                <script type="module" dangerouslySetInnerHTML={{__html:`
+                    import {createElement as h} from "react";
+                    import {hydrateRoot} from "react-dom/client";
+                    import App from "./client/app.tsx";
+                    hydrateRoot(document.querySelector("#app"), h(App, {route:"${url.pathname}"}));
+                `}} />
+            </body>
+        </html>
+        );
         return body ? new Response(body, { status: 200, headers: {"content-type": "text/html"} }) : Resp404;
     }
 }

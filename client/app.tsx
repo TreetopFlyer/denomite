@@ -1,13 +1,21 @@
 import React from "react";
 
-export default ():JSX.Element =>
+export default ({route}:{route:string}):JSX.Element =>
 {
     const [countGet, countSet] = React.useState(5);
 
     return <>
-        <div>hey</div>
-        <p>sup</p>
-        <strong>{countGet}</strong>
-        <button onClick={e=>{countSet(countGet+1)}}>++</button>
+        <div>
+            <h1>React!</h1>
+            <h2>{route}</h2>
+        </div>
+        <nav>
+            <a href="/">home</a>
+            <a href="/other-page">other route</a>
+        </nav>
+        <div>
+            <strong>{countGet}</strong>
+            <button onClick={e=>{countSet(countGet+1)}}>++</button>
+        </div>
     </>;
 };
