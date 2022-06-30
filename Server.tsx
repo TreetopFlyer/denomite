@@ -125,7 +125,6 @@ serve(async (inRequest:Request) =>
     }
     else
     {
-
         const body = await ReactDOMServer.renderToReadableStream(
         <html>
             <body>
@@ -137,7 +136,8 @@ serve(async (inRequest:Request) =>
                     import {createElement as h} from "react";
                     import {hydrateRoot} from "react-dom/client";
                     import App from "./client/app.tsx";
-                    hydrateRoot(document.querySelector("#app"), h(App, {route:"${url.pathname}"}));
+
+                    hydrateRoot(document.querySelector("#app"), h(App, {route:"${url.pathname}", navigation}));
                 `}} />
             </body>
         </html>
