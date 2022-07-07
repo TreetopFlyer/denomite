@@ -1,14 +1,15 @@
 import React from "react";
 import Pages from "./pages.tsx";
 
-const defaultValue:Binding = [["uninitialized"], (inAction:Action)=>{}];
-const RouteContext = React.createContext(defaultValue);
-
+export type NavigationEvent = { canTransition: boolean, destination:{url:string}, transitionWhile: ( arg:void )=>void };
+export type NavigationBinding = (type:string, handler:(event:NavigationEvent)=>void)=>void;
+export type Navigation = { addEventListener:NavigationBinding, removeEventListener:NavigationBinding };
 export type State = Array<string>;
 export type ActionNavigate = {type:"navigate", payload:string};
 export type Action = ActionNavigate; 
 export type Binding = [State, React.Dispatch<Action>];
 
+const defaultValue:Binding = [["uninitialized"], (inAction:Action)=>{}];
 const Reducer = (inState:State, inAction:Action):State =>
 {
     switch(inAction.type)
@@ -18,6 +19,23 @@ const Reducer = (inState:State, inAction:Action):State =>
         default:
             return inState;
     }
+};
+const RouteContext = React.createContext(defaultValue);
+const RouteProvider = ({route, children, navigation}:{route:string, children:React.ReactNode, navigation:false|Navigation}) =>
+{
+    const binding = React.useReducer(Reducer, [route]);
+
+    React.useEffect(()=>
+    {
+        const handler = (e:NavigationEvent) => e.transitionWhile( binding[1]({type:"navigate", payload:new URL(e.destination.url).pathname}) );
+        if(navigation)
+        {
+            navigation.addEventListener("navigate", handler);
+            return ()=>navigation.removeEventListener("navigate", handler);
+        }
+    }, []);
+
+    return <RouteContext.Provider value={binding}>{children}</RouteContext.Provider>;
 };
 
 export const useRoute = () =>
@@ -29,35 +47,11 @@ export const useRoute = () =>
         Navigate:(inURL:string)=> binding[1]({type:"navigate", payload:inURL})
     };
 };
-
-type NavigationEvent = 
-{
-    canTransition: boolean,
-    destination:{url:string},
-    transitionWhile: ( arg:void )=>void
-}
-type NavigationBinding = (type:string, handler:(event:NavigationEvent)=>void)=>void;
-type Navigation = 
-{
-    addEventListener:NavigationBinding,
-    removeEventListener:NavigationBinding
-}
-export default ({route, navigation}:{route:string, navigation:null|Navigation}):JSX.Element =>
+export default ({route, navigation}:{route:string, navigation:false|Navigation}):JSX.Element =>
 {
     const [countGet, countSet] = React.useState(5);
-    const binding = React.useReducer(Reducer, [route]);
-
-    React.useEffect(()=>
-    {
-        const handler = (e:NavigationEvent) => e.canTransition ? e.transitionWhile( binding[1]({type:"navigate", payload:new URL(e.destination.url).pathname}) ) : null;
-        if(navigation)
-        {
-            navigation.addEventListener("navigate", handler);
-            return ()=>navigation.removeEventListener("navigate", handler);
-        }
-    });
-
-    return <RouteContext.Provider value={binding}>
+    
+    return <RouteProvider route={route} navigation={navigation}>
         <nav>
             <a href="/">Home Page</a>
             <a href="/other-page">Other Page</a>
@@ -67,5 +61,5 @@ export default ({route, navigation}:{route:string, navigation:null|Navigation}):
             <strong>{countGet}</strong>
             <button onClick={e=>{countSet(countGet+1)}}>++</button>
         </div>
-    </RouteContext.Provider>;
+    </RouteProvider>;
 };

@@ -88,7 +88,7 @@ const MIMELUT:{[key:string]:string} =
     ".7z": "application/x-7z-compressed"
 };
 
-const Resp404 = new Response("404", {headers:{"content-type": "text/html; charset=utf-8"}});
+const Resp404 = new Response("404", { status: 404, headers:{"content-type": "text/html; charset=utf-8"}});
 
 serve(async (inRequest:Request) =>
 {
@@ -127,11 +127,38 @@ serve(async (inRequest:Request) =>
     {
         const body = await ReactDOMServer.renderToReadableStream(
         <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <script type="importmap" dangerouslySetInnerHTML={{__html:Config.importMap}} ></script>
+                <style dangerouslySetInnerHTML={{__html:`
+                    :root
+                    {
+                        --tint:#6e6548
+                    }
+                `}}>
+                </style>
+                <script type="module" dangerouslySetInnerHTML={{__html:`
+                    import {setup} from "esm/twind/shim";
+                    setup(
+                    {
+                        theme:
+                        {
+                            extend:
+                            {
+                                colors:
+                                {
+                                    "TINT": "var(--tint)",
+                                }
+                            }
+                        }
+                    });
+                `}}>
+                </script>
+            </head>
             <body>
                 <div id="app">
-                    <App route={url.pathname}/>
+                    <App route={url.pathname} navigation={false}/>
                 </div>
-                <script type="importmap" dangerouslySetInnerHTML={{__html:Config.importMap}} ></script>
                 <script type="module" dangerouslySetInnerHTML={{__html:`
                     import {createElement as h} from "react";
                     import {hydrateRoot} from "react-dom/client";
@@ -142,7 +169,7 @@ serve(async (inRequest:Request) =>
             </body>
         </html>
         );
-        return body ? new Response(body, { status: 200, headers: {"content-type": "text/html"} }) : Resp404;
+        return new Response(body, { status: 200, headers: {"content-type": "text/html"} });
     }
 }
 , {port:3333});
