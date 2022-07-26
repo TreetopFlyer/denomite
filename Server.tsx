@@ -106,6 +106,8 @@ serve(async (inRequest:Request) =>
         catch(e)
         {
             console.log(`Can't find ${path} for transpiling.`);
+            console.log(e)
+            
             return Resp404;
         } 
     }
