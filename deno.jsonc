@@ -1,7 +1,9 @@
 {
     "tasks":
     {
-        "go": "deno run -A --unstable --watch Server.tsx"
+        "go": "deno run -A --unstable --watch Server.tsx",
+        "css": "twd client/* -o styles.css",
+        "twd": "deno run -A twd.tsx"
     },
     "importMap": "./imports.json",
     "compilerOptions":

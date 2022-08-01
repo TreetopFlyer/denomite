@@ -131,31 +131,9 @@ serve(async (inRequest:Request) =>
         <html>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <meta charSet="UTF-8"/>
                 <script type="importmap" dangerouslySetInnerHTML={{__html:Config.importMap}} ></script>
-                <style dangerouslySetInnerHTML={{__html:`
-                    :root
-                    {
-                        --tint:#6e6548
-                    }
-                `}}>
-                </style>
-                <script type="module" dangerouslySetInnerHTML={{__html:`
-                    import {setup} from "esm/twind/shim";
-                    setup(
-                    {
-                        theme:
-                        {
-                            extend:
-                            {
-                                colors:
-                                {
-                                    "TINT": "var(--tint)",
-                                }
-                            }
-                        }
-                    });
-                `}}>
-                </script>
+                <link type="text/css" rel="stylesheet" href="/static/styles.css"/>
             </head>
             <body>
                 <div id="app">
@@ -175,3 +153,4 @@ serve(async (inRequest:Request) =>
     }
 }
 , {port:3333});
+

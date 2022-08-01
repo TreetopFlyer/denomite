@@ -58,7 +58,7 @@ export default ({route, navigation}:{route:string, navigation:false|Navigation})
         </nav>
         <Pages/>
         <div>
-            <strong>{countGet}</strong>
+            <strong className="italic border-2">{countGet}</strong>
             <button onClick={e=>{countSet(countGet+1)}}>++</button>
         </div>
     </RouteProvider>;
