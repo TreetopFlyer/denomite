@@ -5,9 +5,56 @@ import React from "react";
 import ReactDOMServer from "react-dom/server";
 import App from "./client/app.tsx";
 
-const fileConfig = await Deno.readTextFile("./deno.jsonc");
-const Config:{ importMap:string } = JSON.parse(fileConfig);
-Config.importMap = await Deno.readTextFile(Config.importMap);
+/**************************************/
+import * as FS from "std/fs/mod.ts"; 
+import * as Path from "std/path/mod.ts";
+import { create } from "twind";
+import { getStyleTagProperties, virtualSheet } from "twind/shim/server";
+const sheet = virtualSheet();
+const parse = create({ sheet: sheet, preflight: true, theme: {}, plugins: {}, mode: "silent" }).tw;
+const leave = [ "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "valueOf", "toLocaleString" ];
+
+const Memory:{[key:string]:string} = {};
+const prune = Path.dirname(Path.fromFileUrl(import.meta.url)).length+1;
+sheet.reset();
+for await (const file of FS.expandGlob("./client/**/*.tsx"))
+{
+    const filename = file.path.substring(prune).replaceAll("\\", "/");
+    const body = await Deno.readTextFile(filename);
+
+    // transpile
+    const code = await ESBuild.transform(body, {loader:"tsx"});
+
+    // extract tailwind classes
+    const m = code.code.match(/[^<>\[\]\(\)|&"'`\.\s]*[^<>\[\]\(\)|&"'`\.\s:]/g);
+    if (m)
+    {
+      for (const c of m)
+      {
+        if (leave.indexOf(c) === -1)
+        {
+                try { parse(c); }
+          catch (e) { console.log(`Error: Failed to handle the pattern '${c}'`); throw e; }
+        }
+      }
+    }
+
+    // add file to memory
+    Memory[filename] = code.code;
+}
+
+// add styles to memory
+Memory["style"] = getStyleTagProperties(sheet).textContent;
+
+// add importMap to memory
+const config:{ importMap:string } = JSON.parse(await Deno.readTextFile("./deno.jsonc"));
+Memory["importMap"] = await Deno.readTextFile(config.importMap);
+
+console.log(Memory);
+
+/***************************************/
+
+
 
 const MIMELUT:{[key:string]:string} =
 {
@@ -97,19 +144,8 @@ serve(async (inRequest:Request) =>
 
     if(path.startsWith("client/"))
     {
-        try
-        {
-            const file = await Deno.readTextFile(path);
-            const code = await ESBuild.transform(file, {loader:"tsx"});
-            return new Response(code.code, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} })
-        }
-        catch(e)
-        {
-            console.log(`Can't find ${path} for transpiling.`);
-            console.log(e)
-            
-            return Resp404;
-        } 
+        const check = Memory[path];
+        return check ? new Response(check, { status: 200, headers: {"content-type": "application/javascript; charset=utf-8"} }) : Resp404;
     }
     else if(path.startsWith("static/"))
     {
@@ -132,20 +168,20 @@ serve(async (inRequest:Request) =>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <meta charSet="UTF-8"/>
-                <script type="importmap" dangerouslySetInnerHTML={{__html:Config.importMap}} ></script>
-                <link type="text/css" rel="stylesheet" href="/static/styles.css"/>
+                <script dangerouslySetInnerHTML={{__html:Memory["importMap"]}} type="importmap" />
+                <style dangerouslySetInnerHTML={{__html:Memory["style"]}}/>
             </head>
             <body>
                 <div id="app">
                     <App route={url.pathname} navigation={false}/>
                 </div>
-                <script type="module" dangerouslySetInnerHTML={{__html:`
+                <script dangerouslySetInnerHTML={{__html:`
                     import {createElement as h} from "react";
                     import {hydrateRoot} from "react-dom/client";
                     import App from "./client/app.tsx";
 
                     hydrateRoot(document.querySelector("#app"), h(App, {route:"${url.pathname}", navigation}));
-                `}} />
+                `}} type="module"/>
             </body>
         </html>
         );
@@ -154,3 +190,4 @@ serve(async (inRequest:Request) =>
 }
 , {port:3333});
 
+console.log(Path.resolve("./client"));
