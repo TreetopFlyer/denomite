@@ -1,11 +1,5 @@
-import { serve } from "std/http/server.ts";
-import * as ESBuild from "x/esbuild@v0.14.45/mod.js";
-
-import React from "react";
-import ReactDOMServer from "react-dom/server";
-import App from "./client/app.tsx";
-
 /**************************************/
+import * as ESBuild from "x/esbuild@v0.14.45/mod.js";
 import * as FS from "std/fs/mod.ts"; 
 import * as Path from "std/path/mod.ts";
 import { create } from "twind";
@@ -13,34 +7,40 @@ import { getStyleTagProperties, virtualSheet } from "twind/shim/server";
 const sheet = virtualSheet();
 const parse = create({ sheet: sheet, preflight: true, theme: {}, plugins: {}, mode: "silent" }).tw;
 const leave = [ "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "valueOf", "toLocaleString" ];
+const extLUT = ["tsx", "jsx", "ts", "js", "html"];
 
 const Memory:{[key:string]:string} = {};
 const prune = Path.dirname(Path.fromFileUrl(import.meta.url)).length+1;
 sheet.reset();
-for await (const file of FS.expandGlob("./client/**/*.tsx"))
+for await (const file of FS.expandGlob("./client/**/*.*"))
 {
     const filename = file.path.substring(prune).replaceAll("\\", "/");
-    const body = await Deno.readTextFile(filename);
+    const ext = Path.extname(filename).substring(1);
+    let body = await Deno.readTextFile(filename);
 
-    // transpile
-    const code = await ESBuild.transform(body, {loader:"tsx"});
-
-    // extract tailwind classes
-    const m = code.code.match(/[^<>\[\]\(\)|&"'`\.\s]*[^<>\[\]\(\)|&"'`\.\s:]/g);
-    if (m)
+    if(extLUT.indexOf(ext) > -1)
     {
-      for (const c of m)
-      {
-        if (leave.indexOf(c) === -1)
+        // transpile
+        const code = await ESBuild.transform(body, {loader:"tsx"});
+        body = code.code;
+
+        // extract tailwind classes
+        const m = body.match(/[^<>\[\]\(\)|&"'`\.\s]*[^<>\[\]\(\)|&"'`\.\s:]/g);
+        if (m)
         {
-                try { parse(c); }
-          catch (e) { console.log(`Error: Failed to handle the pattern '${c}'`); throw e; }
+            for (const c of m)
+            {
+                if (leave.indexOf(c) === -1)
+                {
+                        try { parse(c); }
+                catch (e) { console.log(`Error: Failed to handle the pattern '${c}'`); }
+                }
+            }
         }
-      }
     }
 
     // add file to memory
-    Memory[filename] = code.code;
+    Memory[filename] = body;
 }
 
 // add styles to memory
@@ -53,8 +53,10 @@ Memory["importMap"] = await Deno.readTextFile(config.importMap);
 console.log(Memory);
 
 /***************************************/
-
-
+import { serve } from "std/http/server.ts";
+import React from "react";
+import ReactDOMServer from "react-dom/server";
+import App from "./client/app.tsx";
 
 const MIMELUT:{[key:string]:string} =
 {
@@ -78,7 +80,8 @@ const MIMELUT:{[key:string]:string} =
     ".epub": "application/epub+zip",
     ".gz": "application/gzip",
     ".gif": "image/gif",
-    ".htm .html": "text/html",
+    ".htm": "text/html",
+    ".html": "text/html",
     ".ico": "image/vnd.microsoft.icon",
     ".ics": "text/calendar",
     ".jar": "application/java-archive",
@@ -189,5 +192,3 @@ serve(async (inRequest:Request) =>
     }
 }
 , {port:3333});
-
-console.log(Path.resolve("./client"));
